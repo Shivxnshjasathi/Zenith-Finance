@@ -210,6 +210,19 @@ class FinancialViewModel : ViewModel() {
         saveData()
     }
 
+    fun updateExpense(updatedExpense: Expense) {
+        val yearMonth = updatedExpense.date.substring(0, 7)
+        val monthData = appState.monthlyData[yearMonth]
+        if (monthData != null) {
+            val index = monthData.expenses.indexOfFirst { it.id == updatedExpense.id }
+            if (index != -1) {
+                monthData.expenses[index] = updatedExpense
+                appState = appState.copy(monthlyData = appState.monthlyData.toMutableMap()) // Trigger recomposition
+                saveData()
+            }
+        }
+    }
+
     fun deleteExpense(expenseId: Long) {
         appState.monthlyData.values.forEach { monthData ->
             monthData.expenses.removeAll { it.id == expenseId }
@@ -532,7 +545,7 @@ fun AppDrawerContent(
             // Footer
             Divider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f))
             Text(
-                "Zenith Finance v1.0",
+                "Zenith Finance v1.1",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
@@ -693,12 +706,18 @@ fun BudgetScreen(viewModel: FinancialViewModel) {
 @Composable
 fun TransactionsScreen(viewModel: FinancialViewModel) {
     var showAddExpenseDialog by remember { mutableStateOf(false) }
+    var expenseToEdit by remember { mutableStateOf<Expense?>(null) }
+    var searchQuery by remember { mutableStateOf("") }
     val currentMonthData = viewModel.appState.monthlyData[viewModel.currentMonth] ?: MonthlyData()
-    val expensesForCurrentMonth = currentMonthData.expenses
-    val expensesByDate = expensesForCurrentMonth.groupBy { it.date }
+
+    val filteredExpenses = currentMonthData.expenses.filter {
+        it.description.contains(searchQuery, ignoreCase = true)
+    }
+
+    val expensesByDate = filteredExpenses.groupBy { it.date }
         .toSortedMap(compareByDescending { LocalDate.parse(it) })
 
-    val totalExpense = expensesForCurrentMonth.sumOf { it.amount }
+    val totalExpense = currentMonthData.expenses.sumOf { it.amount }
     val salary = currentMonthData.monthlySalary
     val totalAllocated = currentMonthData.categories.sumOf { it.amount }
     val remainingAmount = salary - totalAllocated - totalExpense
@@ -707,7 +726,10 @@ fun TransactionsScreen(viewModel: FinancialViewModel) {
     Scaffold(
         floatingActionButton = {
             FloatingActionButton(
-                onClick = { showAddExpenseDialog = true },
+                onClick = {
+                    expenseToEdit = null
+                    showAddExpenseDialog = true
+                },
                 shape = CircleShape,
                 containerColor = MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary
@@ -718,27 +740,45 @@ fun TransactionsScreen(viewModel: FinancialViewModel) {
         containerColor = MaterialTheme.colorScheme.background
     ) { padding ->
         Column(modifier = Modifier.padding(padding).fillMaxSize()) {
-            // Header with Total and Daily Average
+            // Summary cards
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp)
-                    .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(12.dp))
                     .padding(16.dp),
-                horizontalArrangement = Arrangement.SpaceAround
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("Total Expense", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    AnimatedCounter(target = totalExpense, style = MaterialTheme.typography.headlineSmall)
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    modifier = Modifier.weight(1f), shape = RoundedCornerShape(12.dp)) {
+                    Column(Modifier.padding(16.dp)) {
+                        Text("Spent", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        AnimatedCounter(target = totalExpense, style = MaterialTheme.typography.titleLarge)
+                    }
                 }
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("Remaining Amount", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    AnimatedCounter(target = remainingAmount, style = MaterialTheme.typography.headlineSmall)
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    modifier = Modifier.weight(1f), shape = RoundedCornerShape(12.dp)) {
+                    Column(Modifier.padding(16.dp)) {
+                        Text("Remaining", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        AnimatedCounter(target = remainingAmount, style = MaterialTheme.typography.titleLarge)
+                    }
                 }
             }
 
+            // Search Bar
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                label = { Text("Search transactions...") },
+                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                shape = RoundedCornerShape(12.dp)
+            )
+
             // Expense List
-            if (expensesForCurrentMonth.isEmpty()) {
+            if (currentMonthData.expenses.isEmpty()) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text(
                         text = "No expenses this month. Tap '+' to add one.",
@@ -755,7 +795,7 @@ fun TransactionsScreen(viewModel: FinancialViewModel) {
                     expensesByDate.forEach { (date, expenses) ->
                         item {
                             Row(
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp, horizontal = 4.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
@@ -777,7 +817,11 @@ fun TransactionsScreen(viewModel: FinancialViewModel) {
                                 ExpenseItem(
                                     expense = expense,
                                     category = viewModel.getCategoryById(expense.categoryId),
-                                    onDelete = { viewModel.deleteExpense(expense.id) }
+                                    onDelete = { viewModel.deleteExpense(expense.id) },
+                                    onEdit = {
+                                        expenseToEdit = expense
+                                        showAddExpenseDialog = true
+                                    }
                                 )
                             }
                         }
@@ -789,10 +833,22 @@ fun TransactionsScreen(viewModel: FinancialViewModel) {
 
     if (showAddExpenseDialog) {
         AddExpenseDialog(
+            expenseToEdit = expenseToEdit,
             bankAccounts = viewModel.appState.bankAccounts,
             onDismiss = { showAddExpenseDialog = false },
-            onConfirm = { desc, amount, date, bankId ->
-                viewModel.addExpense(desc, amount, date, bankId)
+            onConfirm = { desc, amount, date, bankId, id ->
+                if (id == null) {
+                    viewModel.addExpense(desc, amount, date, bankId)
+                } else {
+                    expenseToEdit?.let { originalExpense ->
+                        viewModel.updateExpense(originalExpense.copy(
+                            description = desc,
+                            amount = amount,
+                            date = date,
+                            bankAccountId = bankId
+                        ))
+                    }
+                }
                 showAddExpenseDialog = false
             }
         )
@@ -896,11 +952,11 @@ fun CategoryCard(category: Category, onAmountChange: (Double) -> Unit, onDelete:
 
 @RequiresApi(Build.VERSION_CODES.O)
 @Composable
-fun ExpenseItem(expense: Expense, category: Category?, onDelete: () -> Unit) {
+fun ExpenseItem(expense: Expense, category: Category?, onDelete: () -> Unit, onEdit: () -> Unit) {
     var showDeleteDialog by remember { mutableStateOf(false) }
 
     Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
@@ -928,13 +984,12 @@ fun ExpenseItem(expense: Expense, category: Category?, onDelete: () -> Unit) {
                 )
             }
         }
-        Text(formatCurrency(expense.amount), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyLarge)
+        Text(formatCurrency(expense.amount), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+        IconButton(onClick = onEdit) {
+            Icon(Icons.Filled.Edit, contentDescription = "Edit Expense", tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
+        }
         IconButton(onClick = { showDeleteDialog = true }) {
-            Icon(
-                Icons.Filled.DeleteOutline,
-                contentDescription = "Delete Expense",
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            Icon(Icons.Filled.DeleteOutline, contentDescription = "Delete Expense", tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
         }
     }
 
@@ -1095,18 +1150,20 @@ fun AddCategoryDialog(onDismiss: () -> Unit, onConfirm: (String, String) -> Unit
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddExpenseDialog(
+    expenseToEdit: Expense?,
     bankAccounts: List<BankAccount>,
     onDismiss: () -> Unit,
-    onConfirm: (String, Double, String, Long) -> Unit
+    onConfirm: (String, Double, String, Long, Long?) -> Unit
 ) {
-    var description by remember { mutableStateOf("") }
-    var amount by remember { mutableStateOf("") }
-    var selectedBankAccountId by remember { mutableStateOf(bankAccounts.firstOrNull()?.id) }
+    var description by remember { mutableStateOf(expenseToEdit?.description ?: "") }
+    var amount by remember { mutableStateOf(expenseToEdit?.amount?.toString() ?: "") }
+    var selectedBankAccountId by remember { mutableStateOf(expenseToEdit?.bankAccountId ?: bankAccounts.firstOrNull()?.id) }
+    val isEditing = expenseToEdit != null
 
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = MaterialTheme.colorScheme.surface,
-        title = { Text("Add New Expense") },
+        title = { Text(if (isEditing) "Edit Expense" else "Add New Expense") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(value = description, onValueChange = { description = it }, label = { Text("Description") }, shape = RoundedCornerShape(12.dp))
@@ -1133,11 +1190,11 @@ fun AddExpenseDialog(
                 onClick = {
                     val expenseAmount = amount.toDoubleOrNull()
                     if (description.isNotBlank() && expenseAmount != null && selectedBankAccountId != null) {
-                        onConfirm(description, expenseAmount, LocalDate.now().toString(), selectedBankAccountId!!)
+                        onConfirm(description, expenseAmount, expenseToEdit?.date ?: LocalDate.now().toString(), selectedBankAccountId!!, expenseToEdit?.id)
                     }
                 },
                 enabled = description.isNotBlank() && amount.toDoubleOrNull() != null && selectedBankAccountId != null
-            ) { Text("Add") }
+            ) { Text(if (isEditing) "Save" else "Add") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
@@ -1162,7 +1219,6 @@ fun MonthPickerDialog(onDismiss: () -> Unit, onMonthSelected: (YearMonth) -> Uni
         }
     }
 }
-
 
 // --- Utility Functions ---
 fun formatCurrency(amount: Double): String {
