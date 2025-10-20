@@ -2,14 +2,15 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
+    id("com.google.gms.google-services")
 }
 
 android {
-    namespace = "com.example.financialdashboard"
+    namespace = "com.zincstate.financialdashboard"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.example.financialdashboard"
+        applicationId = "com.zincstate.financialdashboard"
         minSdk = 24
         targetSdk = 36
         versionCode = 1
@@ -70,4 +71,11 @@ dependencies {
     implementation("androidx.compose.material:material-icons-core:1.6.8")
     implementation("androidx.compose.material:material-icons-extended:1.6.8")
     implementation("com.patrykandpatrick.vico:compose-m3:1.13.1")
+
+    implementation(platform("com.google.firebase:firebase-bom:33.1.1")) // Latest stable BOM
+    implementation("com.google.firebase:firebase-analytics")
+    implementation("com.google.firebase:firebase-auth") // KTX is included by default
+    implementation("com.google.firebase:firebase-firestore")
+    implementation ("com.google.firebase:firebase-auth-ktx:22.1.1")
+    implementation("com.google.firebase:firebase-analytics")
 }

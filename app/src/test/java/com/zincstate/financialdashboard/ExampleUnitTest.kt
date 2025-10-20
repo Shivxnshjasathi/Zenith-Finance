@@ -1,4 +1,4 @@
-package com.example.financialdashboard
+package com.zincstate.financialdashboard
 
 import org.junit.Test
 

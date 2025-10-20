@@ -1,4 +1,4 @@
-package com.example.financialdashboard.ui.theme
+package com.zincstate.financialdashboard.ui.theme
 
 import androidx.compose.ui.graphics.Color
 

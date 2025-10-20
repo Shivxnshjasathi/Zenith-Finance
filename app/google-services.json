@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1007950435603",
+    "project_id": "zenith-finance-4cf16",
+    "storage_bucket": "zenith-finance-4cf16.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1007950435603:android:9150f57ffb12de62f5f6e6",
+        "android_client_info": {
+          "package_name": "com.zincstate.financialdashboard"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDkcERsdoYJfgf_Qr8Zn1Szp_0MKynu-50"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
