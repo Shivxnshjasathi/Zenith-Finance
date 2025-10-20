@@ -9,6 +9,7 @@ import androidx.annotation.RequiresApi
 import androidx.compose.animation.*
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -16,11 +17,16 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.AccountBalanceWallet
+import androidx.compose.material.icons.outlined.PieChart
+import androidx.compose.material.icons.outlined.TrackChanges
 import androidx.compose.material3.*
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.runtime.*
@@ -388,6 +394,9 @@ class MainActivity : ComponentActivity() {
 fun AppNavigation(viewModel: FinancialViewModel, auth: FirebaseAuth) {
     var isLoggedIn by remember { mutableStateOf(auth.currentUser != null) }
     val isLoading by viewModel.isLoading.collectAsState()
+    var hasSeenOnboarding by remember {
+        mutableStateOf(App.prefs?.getBoolean("has_seen_onboarding", false) ?: false)
+    }
 
     LaunchedEffect(auth) {
         auth.addAuthStateListener { firebaseAuth ->
@@ -403,10 +412,132 @@ fun AppNavigation(viewModel: FinancialViewModel, auth: FirebaseAuth) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             CircularProgressIndicator()
         }
+    } else if (!hasSeenOnboarding) {
+        OnboardingScreen(onOnboardingFinished = {
+            App.prefs?.edit()?.putBoolean("has_seen_onboarding", true)?.apply()
+            hasSeenOnboarding = true
+        })
     } else if (isLoggedIn) {
         FinancialDashboardApp()
     } else {
         AuthScreen(viewModel)
+    }
+}
+
+
+// --- Onboarding Screen ---
+data class OnboardingPageData(
+    val icon: ImageVector,
+    val title: String,
+    val description: String
+)
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun OnboardingScreen(onOnboardingFinished: () -> Unit) {
+    val pages = listOf(
+        OnboardingPageData(
+            icon = Icons.Outlined.TrackChanges,
+            title = "Track Your Spending",
+            description = "Easily record your daily expenses and see where your money is going."
+        ),
+        OnboardingPageData(
+            icon = Icons.Outlined.PieChart,
+            title = "Set Your Budgets",
+            description = "Create monthly budgets for different categories to stay on top of your finances."
+        ),
+        OnboardingPageData(
+            icon = Icons.Outlined.AccountBalanceWallet,
+            title = "Manage All Accounts",
+            description = "Get a clear view of all your bank accounts and balances in one place."
+        )
+    )
+
+    val pagerState = rememberPagerState(pageCount = { pages.size })
+    val scope = rememberCoroutineScope()
+
+    Scaffold { padding ->
+        Column(
+            modifier = Modifier
+                .padding(padding)
+                .fillMaxSize()
+                .padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.weight(1f)
+            ) { page ->
+                OnboardingPage(pageData = pages[page])
+            }
+
+            Row(
+                Modifier
+                    .wrapContentHeight()
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp),
+                horizontalArrangement = Arrangement.Center
+            ) {
+                repeat(pagerState.pageCount) { iteration ->
+                    val color = if (pagerState.currentPage == iteration) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f)
+                    Box(
+                        modifier = Modifier
+                            .padding(4.dp)
+                            .clip(CircleShape)
+                            .background(color)
+                            .size(12.dp)
+                    )
+                }
+            }
+
+            Button(
+                onClick = {
+                    if (pagerState.currentPage < pages.size - 1) {
+                        scope.launch {
+                            pagerState.animateScrollToPage(pagerState.currentPage + 1)
+                        }
+                    } else {
+                        onOnboardingFinished()
+                    }
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(52.dp),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text(if (pagerState.currentPage < pages.size - 1) "Next" else "Get Started")
+            }
+        }
+    }
+}
+
+@Composable
+fun OnboardingPage(pageData: OnboardingPageData) {
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Icon(
+            imageVector = pageData.icon,
+            contentDescription = null,
+            modifier = Modifier.size(120.dp),
+            tint = MaterialTheme.colorScheme.primary
+        )
+        Spacer(Modifier.height(48.dp))
+        Text(
+            text = pageData.title,
+            style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.Bold,
+            textAlign = TextAlign.Center
+        )
+        Spacer(Modifier.height(16.dp))
+        Text(
+            text = pageData.description,
+            style = MaterialTheme.typography.bodyLarge,
+            textAlign = TextAlign.Center,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 
@@ -949,9 +1080,11 @@ fun BudgetScreen(viewModel: FinancialViewModel) {
         containerColor = MaterialTheme.colorScheme.background
     ) { padding ->
         LazyColumn(
-            contentPadding = PaddingValues(16.dp),
+            contentPadding = PaddingValues(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp),
-            modifier = Modifier.padding(padding)
+            modifier = Modifier
+                .padding(padding)
+                .fillMaxSize()
         ) {
             item {
                 OutlinedTextField(
@@ -960,7 +1093,9 @@ fun BudgetScreen(viewModel: FinancialViewModel) {
                     label = { Text("Selected Month") },
                     readOnly = true,
                     trailingIcon = { Icon(Icons.Filled.CalendarToday, null) },
-                    modifier = Modifier.fillMaxWidth().clickable { showMonthPicker = true },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { showMonthPicker = true },
                     shape = RoundedCornerShape(12.dp)
                 )
             }
@@ -1032,7 +1167,7 @@ fun BudgetScreen(viewModel: FinancialViewModel) {
     if (showBankAccountDialog) {
         BankAccountDialog(
             accountToEdit = bankAccountToEdit,
-            onDismiss = { showBankAccountDialog = false },
+            onDismiss = { showAddCategoryDialog = false },
             onConfirm = { name, balance, id ->
                 if (id == null) {
                     viewModel.addBankAccount(name, balance)
@@ -1096,7 +1231,7 @@ fun TransactionsScreen(viewModel: FinancialViewModel) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp),
+                    .padding(horizontal = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 Card(
@@ -1117,6 +1252,8 @@ fun TransactionsScreen(viewModel: FinancialViewModel) {
                 }
             }
 
+            Spacer(Modifier.height(16.dp))
+
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
@@ -1124,7 +1261,7 @@ fun TransactionsScreen(viewModel: FinancialViewModel) {
                 leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                    .padding(horizontal = 16.dp),
                 shape = RoundedCornerShape(12.dp)
             )
 
@@ -1139,7 +1276,7 @@ fun TransactionsScreen(viewModel: FinancialViewModel) {
                 }
             } else {
                 LazyColumn(
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     expensesByDate.forEach { (date, expenses) ->
